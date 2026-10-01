@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gsaps4v előnézet</title>
+<meta name="robots" content="noindex">
+<style>
+  :root {
+    --bg: #fafafa; --card: #ffffff; --text: #111; --muted: #6b6b6b; --line: #e5e5e5;
+    --blue: #1f5fd6; --red: #c8322b; --warn: #b26b00; --warn-bg: #fff4e0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0b0c; --card: #151517; --text: #f1f1f1; --muted: #9a9a9f; --line: #26262a;
+      --blue: #6f9bff; --red: #ff6b61; --warn: #ffb547; --warn-bg: #2b2210;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { max-width: 980px; margin: 0 auto; padding: 24px 16px 8px; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 14px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 8px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+  .stat b { display: block; font-size: 18px; }
+  .stat span { color: var(--muted); font-size: 12px; }
+  .alert { background: var(--warn-bg); color: var(--warn); border-radius: 10px; padding: 10px 12px; margin: 8px 0; font-size: 14px; }
+  .tags { color: var(--blue); font-size: 13px; margin-top: 6px; word-break: break-word; }
+  main { max-width: 980px; margin: 0 auto; padding: 8px 16px 48px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+  .card.red { border-color: var(--red); }
+  .imgwrap { position: relative; aspect-ratio: 1; background: var(--line); cursor: zoom-in; }
+  .imgwrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .badge { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,.65); color: #fff;
+    font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 999px; }
+  .badge.redday { left: auto; right: 8px; background: var(--red); }
+  .meta { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; }
+  .date { font-weight: 600; font-size: 14px; }
+  .file { color: var(--muted); font-size: 12px; }
+  .quote { font-size: 14px; font-style: italic; }
+  .quote.none { font-style: normal; color: var(--warn); font-size: 13px; }
+  #status { max-width: 980px; margin: 0 auto; padding: 24px 16px; color: var(--muted); }
+  .lightbox { position: fixed; inset: 0; background: rgba(0,0,0,.9); display: none;
+    align-items: center; justify-content: center; flex-direction: column; padding: 16px; z-index: 10; }
+  .lightbox.open { display: flex; }
+  .lightbox img { max-width: min(92vw, 720px); max-height: 72vh; border-radius: 8px; }
+  .lightbox pre { color: #eee; white-space: pre-wrap; font: 14px/1.5 inherit; max-width: 720px; margin: 14px 0 0; }
+  .lightbox .close { position: absolute; top: 12px; right: 16px; color: #fff; font-size: 28px; background: none; border: 0; cursor: pointer; }
+  footer { max-width: 980px; margin: 0 auto; padding: 0 16px 32px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>gsaps4v · következő posztok</h1>
+  <div class="sub">Élőben a GitHub sorból olvas. Ami itt látszik, az megy ki, ebben a sorrendben, minden nap 19:00-kor.</div>
+  <div class="stats" id="stats"></div>
+  <div id="alerts"></div>
+  <div class="tags" id="tags"></div>
+</header>
+<div id="status">Betöltés…</div>
+<main id="grid"></main>
+<footer>Törölni vagy átírni a GitHubon tudsz a <code>queue</code>, <code>queue_red</code> és <code>queue_bonus</code> mappában. Az oldal frissítés után azonnal mutatja a változást.</footer>
+
+<div class="lightbox" id="lb">
+  <button class="close" aria-label="Bezárás" onclick="closeLb()">×</button>
+  <img id="lbimg" alt="">
+  <pre id="lbtext"></pre>
+</div>
+
+<script>
+// A repó neve a címből jön (tulajdonos.github.io/repo), ha nem, ezek az alapértékek
+const FALLBACK_OWNER = "balazsnogradii-cell";
+const FALLBACK_REPO = "gsaps4v-bot";
+const POSTS_BEFORE = 49;
+const POST_HOUR = 19; // budapesti idő
+
+const host = location.hostname;
+const OWNER = host.endsWith(".github.io") ? host.split(".")[0] : FALLBACK_OWNER;
+const REPO = location.pathname.split("/").filter(Boolean)[0] || FALLBACK_REPO;
+const API = `https://api.github.com/repos/${OWNER}/${REPO}/contents/`;
+const IMG = /\.(jpe?g|png|webp)$/i;
+const NUMBERED = /^\d{4}\.jpg$/;
+
+const DAYS = ["vas", "hét", "kedd", "szer", "csüt", "pén", "szom"];
+const MONTHS = ["jan.", "febr.", "márc.", "ápr.", "máj.", "jún.", "júl.", "aug.", "szept.", "okt.", "nov.", "dec."];
+
+async function list(folder) {
+  const r = await fetch(API + folder + "?t=" + Date.now());
+  if (r.status === 404) return [];
+  if (!r.ok) throw new Error(r.status === 403 ? "GitHub API limit, próbáld pár perc múlva." : "GitHub hiba: " + r.status);
+  return r.json();
+}
+
+function stem(name) { return name.replace(/\.[^.]+$/, ""); }
+function naturalKey(name) {
+  return stem(name).split(/(\d+)/).map(t => /^\d+$/.test(t) ? t.padStart(12, "0") : t.toLowerCase()).join("");
+}
+
+// Ugyanaz a sorrend, mint a post.py-ban: a beszámozottak elöl, utánuk a friss feltöltések név szerint
+async function queueOf(folder) {
+  const files = await list(folder);
+  const txt = Object.fromEntries(files.filter(f => /\.txt$/i.test(f.name)).map(f => [stem(f.name), f]));
+  const imgs = files.filter(f => IMG.test(f.name));
+  const done = imgs.filter(f => NUMBERED.test(f.name)).sort((a, b) => a.name.localeCompare(b.name));
+  const fresh = imgs.filter(f => !NUMBERED.test(f.name)).sort((a, b) => naturalKey(a.name) < naturalKey(b.name) ? -1 : 1);
+  return [...done, ...fresh].map(f => ({ folder, name: f.name, url: f.download_url, txt: txt[stem(f.name)] }));
+}
+
+async function hashtags() {
+  try {
+    const src = await (await fetch(`https://raw.githubusercontent.com/${OWNER}/${REPO}/main/post.py?t=` + Date.now())).text();
+    const grab = k => (src.match(new RegExp(k + "\\s*=\\s*\\[([^\\]]*)\\]")) || [, ""])[1].match(/#[\w]+/g) || [];
+    const pick = (src.match(/HASHTAGS_ROTATING_PICK\s*=\s*(\d+)/) || [, "3"])[1];
+    return { fixed: grab("HASHTAGS_FIXED"), rot: grab("HASHTAGS_ROTATING"), pick };
+  } catch { return null; }
+}
+
+function budapestNow() {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Budapest", year: "numeric", month: "2-digit",
+    day: "2-digit", hour: "2-digit", hour12: false }).formatToParts(new Date());
+  const get = t => +parts.find(p => p.type === t).value;
+  return { y: get("year"), m: get("month"), d: get("day"), h: get("hour") };
+}
+
+function fmt(date) {
+  return `${date.getFullYear()}. ${MONTHS[date.getMonth()]} ${date.getDate()}. (${DAYS[date.getDay()]})`;
+}
+
+async function main() {
+  const [normal, red, bonus, posted, tags] = await Promise.all([queueOf("queue"), queueOf("queue_red"), queueOf("queue_bonus"), list("posted"), hashtags()]);
+  const postedNums = posted.filter(f => NUMBERED.test(f.name)).map(f => parseInt(f.name, 10));
+  let postNo = Math.max(POSTS_BEFORE, ...postedNums) + 1;
+
+  const now = budapestNow();
+  const day = new Date(now.y, now.m - 1, now.d);
+  if (now.h >= POST_HOUR) day.setDate(day.getDate() + 1);
+
+  // Nap szerinti ütemezés, ahogy a post.py csinálja
+  const n = [...normal], r = [...red], b = [...bonus], plan = [];
+  while (n.length || (r.length && plan.length < 400)) {
+    const redDay = day.getMonth() + 1 === day.getDate();
+    const prev = new Date(day); prev.setDate(prev.getDate() - 1);
+    const bonusDay = prev.getMonth() + 1 === prev.getDate();
+    let item = null;
+    if (redDay && r.length) item = r.shift();
+    else if (bonusDay && b.length) item = b.shift();
+    else if (n.length) item = n.shift();
+    else break;
+    plan.push({ ...item, date: new Date(day), redDay, postNo: postNo++ });
+    day.setDate(day.getDate() + 1);
+  }
+
+  await Promise.all(plan.map(async p => {
+    p.quote = p.txt ? (await (await fetch(p.txt.download_url + "?t=" + Date.now())).text()).trim() : "";
+  }));
+
+  document.getElementById("status").remove();
+  const last = plan.length ? fmt(plan[plan.length - 1].date) : "–";
+  const noQuote = plan.filter(p => !p.quote && p.folder !== "queue_bonus").length;
+  document.getElementById("stats").innerHTML = `
+    <div class="stat"><b>${normal.length}</b><span>kép a sorban</span></div>
+    <div class="stat"><b>${red.length}</b><span>piros tartalék</span></div>
+    <div class="stat"><b>${bonus.length}</b><span>bónusz tartalék</span></div>
+    <div class="stat"><b>${last}</b><span>eddig van anyag</span></div>
+    <div class="stat"><b>${noQuote}</b><span>idézet nélkül</span></div>`;
+
+  const alerts = [];
+  if (normal.length < 7) alerts.push(`Csak ${normal.length} kép van a sorban. A rendszer naponta egyet pótol, de ha kevés, tölts fel többet.`);
+  if (!red.length) alerts.push("Nincs piros kép tartalékban. A következő futás generál egyet.");
+  document.getElementById("alerts").innerHTML = alerts.map(a => `<div class="alert">${a}</div>`).join("");
+  if (tags) document.getElementById("tags").textContent =
+    `${tags.fixed.join(" ")}  +  ${tags.pick} naponta ezekből: ${tags.rot.join(" ")}`;
+
+  const grid = document.getElementById("grid");
+  plan.forEach(p => {
+    const el = document.createElement("div");
+    el.className = "card" + (p.folder === "queue_red" ? " red" : "");
+    el.innerHTML = `
+      <div class="imgwrap"><img loading="lazy" alt=""><span class="badge">${p.postNo}.</span>
+        ${p.folder === "queue_red" ? '<span class="badge redday">piros nap</span>' : ""}${p.folder === "queue_bonus" ? '<span class="badge redday" style="background:#555">bónusz</span>' : ""}</div>
+      <div class="meta">
+        <div class="date">${fmt(p.date)}</div>
+        <div class="quote"></div>
+        <div class="file">${p.folder}/${p.name}</div>
+      </div>`;
+    el.querySelector("img").src = p.url;
+    const q = el.querySelector(".quote");
+    if (p.folder === "queue_bonus") { q.textContent = "bónusz · szándékosan idézet nélkül"; q.style.fontStyle = "normal"; q.style.color = "var(--muted)"; }
+    else if (p.quote) q.textContent = p.quote; else { q.textContent = "nincs idézet · posztoláskor generál egyet"; q.classList.add("none"); }
+    el.querySelector(".imgwrap").onclick = () => openLb(p, tags);
+    grid.appendChild(el);
+  });
+  if (!plan.length) grid.innerHTML = '<div class="sub">A sor üres.</div>';
+}
+
+function openLb(p, tags) {
+  document.getElementById("lbimg").src = p.url;
+  const t = tags ? `${tags.fixed.join(" ")} + ${tags.pick} rotáló` : "";
+  document.getElementById("lbtext").textContent = `${p.postNo}. poszt · ${fmt(p.date)}\n\n${p.quote ? p.quote + "\n" : ""}.\n.\n.\n${t}`;
+  document.getElementById("lb").classList.add("open");
+}
+function closeLb() { document.getElementById("lb").classList.remove("open"); }
+document.getElementById("lb").addEventListener("click", e => { if (e.target.id === "lb") closeLb(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeLb(); });
+
+main().catch(e => { document.getElementById("status").textContent = "Hiba: " + e.message; });
+</script>
+</body>
+</html>

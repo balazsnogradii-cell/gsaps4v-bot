@@ -1,0 +1,54 @@
+name: Daily post
+
+on:
+  schedule:
+    - cron: "0 17 * * *"  # 19:00 budapesti nyari ido
+    - cron: "0 18 * * *"  # 19:00 budapesti teli ido (a script mindig csak az egyiket engedi tovabb)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Csak uj kep a sor vegere, posztolas nelkul"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write  # hogy a sort vissza tudja menteni a repoba
+
+concurrency:
+  group: daily-post
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install requests pillow
+
+      - name: Git setup
+        run: |
+          git config user.name "gsaps4v-bot"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+
+      - name: Generate and post
+        env:
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          LORA_URL: ${{ secrets.LORA_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: python post.py
+
+      - name: Save refreshed token
+        if: hashFiles('new_token.txt') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh secret set IG_ACCESS_TOKEN < new_token.txt
+          rm new_token.txt
