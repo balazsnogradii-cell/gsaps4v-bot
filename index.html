@@ -125,6 +125,18 @@ function budapestNow() {
   return { y: get("year"), m: get("month"), d: get("day"), h: get("hour") };
 }
 
+async function postedToday(now) {
+  try {
+    const r = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/commits?path=posted&per_page=1&t=` + Date.now());
+    const c = (await r.json())[0];
+    if (!c) return false;
+    const d = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Budapest", year: "numeric", month: "2-digit", day: "2-digit" })
+      .format(new Date(c.commit.committer.date));
+    const today = `${now.y}-${String(now.m).padStart(2, "0")}-${String(now.d).padStart(2, "0")}`;
+    return d === today;
+  } catch { return now.h >= POST_HOUR; }
+}
+
 function fmt(date) {
   return `${date.getFullYear()}. ${MONTHS[date.getMonth()]} ${date.getDate()}. (${DAYS[date.getDay()]})`;
 }
@@ -136,7 +148,8 @@ async function main() {
 
   const now = budapestNow();
   const day = new Date(now.y, now.m - 1, now.d);
-  if (now.h >= POST_HOUR) day.setDate(day.getDate() + 1);
+  // Ha ma már kiment a poszt, a sor eleje holnap megy ki, különben ma
+  if (await postedToday(now)) day.setDate(day.getDate() + 1);
 
   // Nap szerinti ütemezés, ahogy a post.py csinálja
   const n = [...normal], r = [...red], b = [...bonus], plan = [];
