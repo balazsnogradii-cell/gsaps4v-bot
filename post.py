@@ -67,6 +67,8 @@ def commit_push(message):
     git("add", "-A", str(QUEUE), str(RED_QUEUE), str(BONUS_QUEUE), str(POSTED))
     if RED_LEARNED.exists():
         git("add", str(RED_LEARNED))
+    if LAST_POST.exists():
+        git("add", str(LAST_POST))
     if subprocess.run(["git", "diff", "--cached", "--quiet"]).returncode != 0:
         git("commit", "-m", message)
         git("pull", "--rebase")
@@ -366,22 +368,35 @@ def refresh_token():
     print(f"Token megujitva, meg {resp.json().get('expires_in', 0) // 86400} napig ervenyes")
 
 
-def right_hour():
-    """Ket idozites fut (17:00 es 18:00 UTC), ebbol mindig csak az fut tovabb,
-    amelyik eppen 19:00 budapesti ido. Igy nyari es teli idoszamitasban is 19:00-kor posztol."""
-    schedule = os.environ.get("SCHEDULE", "")
-    if not schedule:  # kezi inditas
-        return True
+LAST_POST = pathlib.Path("last_post_date.txt")
+POST_TIME = (18, 40)  # ennel korabban (budapesti ido) az idozitett futas nem posztol
+
+
+def budapest_now():
     from zoneinfo import ZoneInfo
-    offset = datetime.datetime.now(ZoneInfo("Europe/Budapest")).utcoffset().total_seconds() / 3600
-    return (schedule.startswith("0 17") and offset == 2) or (schedule.startswith("0 18") and offset == 1)
+    return datetime.datetime.now(ZoneInfo("Europe/Budapest"))
+
+
+def should_run():
+    """Tobb idozites fut naponta (18:47, 19:47 ... budapesti ido korul).
+    Az elso, amelyik 18:40 utan indul es ma meg nem volt poszt, posztol, a tobbi kilep.
+    Igy egy kimaradt GitHub-futas sem okoz kiesest, es dupla poszt sem lehet."""
+    now = budapest_now()
+    if DRY_RUN:
+        return True
+    if LAST_POST.exists() and LAST_POST.read_text().strip() == now.date().isoformat():
+        print("Ma mar kiment a poszt, kilepek.")
+        return False
+    if os.environ.get("SCHEDULE") and (now.hour, now.minute) < POST_TIME:
+        print("Meg nincs 18:40 budapesti ido, kilepek.")
+        return False
+    return True
 
 
 def main():
-    if not right_hour():
-        print("Ez az idozites most nem 19:00 budapesti ido, kihagyom.")
+    if not should_run():
         return
-    today = datetime.date.today()
+    today = budapest_now().date()
     red_day = is_red_day(today)
     bonus_day = is_bonus_day(today)
 
@@ -447,6 +462,8 @@ def main():
 
     caption = build_caption(head)
     post_id = publish(image_url, caption)
+    LAST_POST.write_text(today.isoformat() + "\n")
+    commit_push(f"Posztolas datuma: {today}")  # azonnal mentjuk, hogy egy tartalek futas se posztoljon ujra
     print(f"Kiposztolva: {source}/{head.name}, id: {post_id}\n{caption}")
 
     # Archivum: a kep a valodi Instagram poszt szamat kapja (0050.jpg, 0051.jpg ...)

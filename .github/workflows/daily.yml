@@ -2,8 +2,12 @@ name: Daily post
 
 on:
   schedule:
-    - cron: "0 17 * * *"  # 19:00 budapesti nyari ido
-    - cron: "0 18 * * *"  # 19:00 budapesti teli ido (a script mindig csak az egyiket engedi tovabb)
+    # Tobb indulas naponta, kerek orakon kivul. A script csak az elsot engedi posztolni
+    # 18:40 (budapesti ido) utan, a tobbi pottartalek, ha a GitHub egy futast kihagy.
+    - cron: "47 16 * * *"  # nyaron 18:47, telen 17:47 (ilyenkor kilep)
+    - cron: "47 17 * * *"  # nyaron 19:47 (tartalek), telen 18:47
+    - cron: "47 18 * * *"  # tartalek
+    - cron: "47 19 * * *"  # tartalek
   workflow_dispatch:
     inputs:
       dry_run:

@@ -1,6 +1,6 @@
 # gsaps4v napi poszt
 
-Minden nap 19:00-kor (budapesti idő) kimegy egy poszt az Instagramra. A képek egy sorban várakoznak, így mindig hetekre előre látod, mi következik.
+Minden nap 18:47 körül (budapesti idő) kimegy egy poszt az Instagramra. A képek egy sorban várakoznak, így mindig hetekre előre látod, mi következik.
 
 ## Hogyan működik
 
@@ -67,7 +67,10 @@ A kiposztolt képek a `posted` mappába kerülnek a valódi Instagram poszt szá
 
 ## Időzítés
 
-Két időzítés fut (17:00 és 18:00 UTC), és a script mindig csak azt engedi tovább, amelyik épp 19:00 budapesti idő. Így nyári és téli időszámításban is 19:00-kor posztol. A GitHub időzítői néha pár percet késnek, ez nem okoz kimaradást.
+A GitHub naponta négyszer indítja a scriptet, kerek órákon kívül (16:47, 17:47, 18:47, 19:47 UTC), mert egész órakor a GitHub néha eldobja az időzített futásokat. A script csak akkor posztol, ha már elmúlt 18:40 budapesti idő, és ma még nem ment ki poszt (`last_post_date.txt`). Így:
+- nyáron a 18:47-es, télen a 18:47-es (UTC-ben egy órával később induló) futás posztol, az időszámítás-váltás magától rendeződik,
+- ha a GitHub egy futást kihagy, a következő pótolja,
+- dupla poszt nem lehet, kézi indításnál sem.
 
 ## Beállítás (egyszer)
 
