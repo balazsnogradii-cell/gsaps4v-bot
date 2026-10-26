@@ -237,6 +237,28 @@ def build_caption(img):
     return f"{head}.\n.\n.\n{' '.join(tags)}"
 
 
+def fal_run(model, payload, max_wait=360):
+    """fal.ai hivas a queue API-n: beadja a kerest, es legfeljebb max_wait masodpercig var az eredmenyre.
+    Megbizhatobb, mint a szinkron hivas, ami lassu fal mellett idotullepessel elhasal."""
+    h = {"Authorization": f"Key {FAL_KEY}"}
+    r = requests.post(f"https://queue.fal.run/{model}", headers=h, json=payload, timeout=60)
+    r.raise_for_status()
+    job = r.json()
+    status_url, result_url = job["status_url"], job["response_url"]
+    waited = 0
+    while waited < max_wait:
+        st = requests.get(status_url, headers=h, timeout=30).json().get("status")
+        if st == "COMPLETED":
+            res = requests.get(result_url, headers=h, timeout=60)
+            res.raise_for_status()
+            return res.json()
+        if st not in ("IN_QUEUE", "IN_PROGRESS"):
+            raise RuntimeError(f"fal statusz: {st}")
+        time.sleep(5)
+        waited += 5
+    raise TimeoutError(f"fal nem vegzett {max_wait} mp alatt (utolso statusz: {st})")
+
+
 def safe(fn, label):
     """A generalas hibaja (pl. lassu fal.ai, idotullepes) soha nem allithatja meg a posztolast."""
     def wrapper(*a, **k):
@@ -254,22 +276,14 @@ def is_bonus_day(day):
 def _generate_bonus():
     """Bonusz kep: az eredeti master szerkesztese a 'completely different face' prompttal."""
     ref = f"https://raw.githubusercontent.com/{REPO}/main/bonus_reference.png"
-    resp = requests.post(
-        f"https://fal.run/{BONUS_MODEL}",
-        headers={"Authorization": f"Key {FAL_KEY}"},
-        json={
-            "prompt": BONUS_PROMPT,
-            "image_urls": [ref],
-            "image_size": {"width": 1024, "height": 1024},
-            "num_images": 1,
-            "output_format": "jpeg",
-        },
-        timeout=180,
-    )
-    if not resp.ok:
-        print(f"Figyelem: bonusz generalas nem sikerult ({resp.status_code}): {resp.text[:300]}")
-        return
-    image = requests.get(resp.json()["images"][0]["url"], timeout=120)
+    result = fal_run(BONUS_MODEL, {
+        "prompt": BONUS_PROMPT,
+        "image_urls": [ref],
+        "image_size": {"width": 1024, "height": 1024},
+        "num_images": 1,
+        "output_format": "jpeg",
+    })
+    image = requests.get(result["images"][0]["url"], timeout=120)
     path = BONUS_QUEUE / f"{next_number():04d}.jpg"
     path.write_bytes(image.content)
     print(f"Uj bonusz kep: {path.name}")
@@ -292,23 +306,14 @@ def is_red_day(day):
 
 
 def _generate_into_queue(prompt, folder):
-    resp = requests.post(
-        "https://fal.run/fal-ai/flux-2/lora",
-        headers={"Authorization": f"Key {FAL_KEY}"},
-        json={
-            "prompt": prompt,
-            "loras": [{"path": LORA_URL, "scale": LORA_SCALE}],
-            "image_size": {"width": 1024, "height": 1024},
-            "num_images": 1,
-            "output_format": "jpeg",
-        },
-        timeout=180,
-    )
-    if not resp.ok:
-        # Nem allunk le: a pufferbol aznap is lesz poszt
-        print(f"Figyelem: a generalas nem sikerult ({resp.status_code}): {resp.text[:300]}")
-        return
-    image = requests.get(resp.json()["images"][0]["url"], timeout=120)
+    result = fal_run("fal-ai/flux-2/lora", {
+        "prompt": prompt,
+        "loras": [{"path": LORA_URL, "scale": LORA_SCALE}],
+        "image_size": {"width": 1024, "height": 1024},
+        "num_images": 1,
+        "output_format": "jpeg",
+    })
+    image = requests.get(result["images"][0]["url"], timeout=120)
     path = folder / f"{next_number():04d}.jpg"
     path.write_bytes(image.content)
     print(f"Uj kep a sor vegen: {path.name}")
