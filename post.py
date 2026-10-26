@@ -237,11 +237,21 @@ def build_caption(img):
     return f"{head}.\n.\n.\n{' '.join(tags)}"
 
 
+def safe(fn, label):
+    """A generalas hibaja (pl. lassu fal.ai, idotullepes) soha nem allithatja meg a posztolast."""
+    def wrapper(*a, **k):
+        try:
+            return fn(*a, **k)
+        except Exception as e:
+            print(f"Figyelem: {label} nem sikerult ({type(e).__name__}: {e}), posztolas a sorbol megy tovabb")
+    return wrapper
+
+
 def is_bonus_day(day):
     return is_red_day(day - datetime.timedelta(days=1))
 
 
-def generate_bonus():
+def _generate_bonus():
     """Bonusz kep: az eredeti master szerkesztese a 'completely different face' prompttal."""
     ref = f"https://raw.githubusercontent.com/{REPO}/main/bonus_reference.png"
     resp = requests.post(
@@ -254,7 +264,7 @@ def generate_bonus():
             "num_images": 1,
             "output_format": "jpeg",
         },
-        timeout=300,
+        timeout=180,
     )
     if not resp.ok:
         print(f"Figyelem: bonusz generalas nem sikerult ({resp.status_code}): {resp.text[:300]}")
@@ -281,7 +291,7 @@ def is_red_day(day):
     return day.month == day.day
 
 
-def generate_into_queue(prompt, folder):
+def _generate_into_queue(prompt, folder):
     resp = requests.post(
         "https://fal.run/fal-ai/flux-2/lora",
         headers={"Authorization": f"Key {FAL_KEY}"},
@@ -292,7 +302,7 @@ def generate_into_queue(prompt, folder):
             "num_images": 1,
             "output_format": "jpeg",
         },
-        timeout=300,
+        timeout=180,
     )
     if not resp.ok:
         # Nem allunk le: a pufferbol aznap is lesz poszt
@@ -479,6 +489,10 @@ def main():
 
     if today.weekday() == 0:  # hetfon
         refresh_token()
+
+
+generate_into_queue = safe(_generate_into_queue, "kepgeneralas")
+generate_bonus = safe(_generate_bonus, "bonusz generalas")
 
 
 if __name__ == "__main__":
