@@ -237,7 +237,7 @@ def build_caption(img):
     return f"{head}.\n.\n.\n{' '.join(tags)}"
 
 
-def fal_run(model, payload, max_wait=360):
+def fal_run(model, payload, max_wait=600):
     """fal.ai hivas a queue API-n: beadja a kerest, es legfeljebb max_wait masodpercig var az eredmenyre.
     Megbizhatobb, mint a szinkron hivas, ami lassu fal mellett idotullepessel elhasal."""
     h = {"Authorization": f"Key {FAL_KEY}"}
