@@ -196,7 +196,8 @@ def generate_quote(red=False):
             timeout=90,
         )
         resp.raise_for_status()
-        lines = [l.strip() for l in resp.json()["content"][0]["text"].splitlines() if l.strip()]
+        text_all = "\n".join(b.get("text", "") for b in resp.json()["content"] if b.get("type") == "text")
+        lines = [l.strip() for l in text_all.splitlines() if l.strip()]
         if red:
             best = [l for l in lines if l.upper().startswith("BEST:")]
             text = best[-1][5:] if best else (lines[-1] if lines else "")
@@ -342,7 +343,8 @@ def publish(image_url, caption):
         fail("kontener", resp)
     container_id = resp.json()["id"]
 
-    for _ in range(24):
+    # Varunk, amig az Instagram feldolgozza a kepet (legfeljebb 5 perc)
+    for _ in range(60):
         status = requests.get(
             f"{GRAPH}/{container_id}",
             params={"fields": "status_code", "access_token": IG_TOKEN},
@@ -355,12 +357,21 @@ def publish(image_url, caption):
             sys.exit(1)
         time.sleep(5)
 
-    resp = requests.post(
-        f"{GRAPH}/{IG_USER_ID}/media_publish",
-        data={"creation_id": container_id, "access_token": IG_TOKEN},
-        timeout=60,
-    )
-    if not resp.ok:
+    # Posztolas, ujraprobalva, ha az Instagram szerint meg nem kesz a media
+    for attempt in range(6):
+        resp = requests.post(
+            f"{GRAPH}/{IG_USER_ID}/media_publish",
+            data={"creation_id": container_id, "access_token": IG_TOKEN},
+            timeout=60,
+        )
+        if resp.ok:
+            break
+        if "9007" in resp.text or "not ready" in resp.text.lower():
+            print(f"A media meg nem kesz, varok ({attempt + 1}/6)")
+            time.sleep(20)
+            continue
+        fail("posztolas", resp)
+    else:
         fail("posztolas", resp)
     return resp.json()["id"]
 
